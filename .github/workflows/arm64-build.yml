@@ -1,0 +1,86 @@
+name: ARM64 kernel module packages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/arm64-build.yml'
+      - 'scripts/arm64/**'
+      - 'src/**'
+      - 'Makefile'
+      - 'harness/fixtures/mt7603u_e2.bin'
+permissions:
+  contents: read
+concurrency:
+  group: arm64-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: github.repository == 'loverto/mt7603u'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - label: debian11-5.10
+            image: debian:bullseye
+            headers: linux-headers-arm64
+            pattern: 'linux-headers-*-arm64'
+            prefix: '5.10.'
+          - label: ubuntu24-6.8
+            image: ubuntu:24.04
+            headers: linux-headers-generic
+            pattern: 'linux-headers-*-generic'
+            prefix: '6.8.'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build in matching ARM64 distribution userspace
+        env:
+          IMAGE: ${{ matrix.image }}
+          HEADERS: ${{ matrix.headers }}
+          HEADER_PATTERN: ${{ matrix.pattern }}
+          KERNEL_PREFIX: ${{ matrix.prefix }}
+          BUILD_LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e HEADERS -e HEADER_PATTERN -e KERNEL_PREFIX -e BUILD_LABEL \
+            -e SOURCE_COMMIT="$GITHUB_SHA" \
+            "$IMAGE" bash scripts/arm64/ci-build.sh
+      - name: Upload candidate package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mt7603u-${{ matrix.label }}-arm64
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+  publish:
+    if: github.repository == 'loverto/mt7603u' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: mt7603u-*
+          merge-multiple: true
+          path: dist
+      - name: Publish build-only prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd dist
+          for checksum in *.tar.gz.sha256; do sha256sum -c "$checksum"; done
+          test "$(find . -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 2
+          tag="arm64-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" *.tar.gz *.tar.gz.sha256 \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "ARM64 kernel-module candidates ($GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT)" \
+            --notes "Compile-tested only against the exact Debian/Ubuntu kernel releases listed in each archive. Not validated on Kylin or physical hardware. Vendor firmware is not redistributed in these assets; see README. Kernel ABI and security policy must match. Source commit: $GITHUB_SHA."
