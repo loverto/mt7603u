@@ -1,0 +1,99 @@
+name: Kylin 5.4 ARM64 driver
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/kylin-arm64.yml'
+      - 'scripts/arm64/**'
+      - 'src/**'
+      - 'Makefile'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Official Kylin APT suite
+        type: choice
+        options: ['10.1', '10.0', '10.1-2107-updates', '10.1-2203-updates']
+        default: '10.1'
+      package_version:
+        description: Optional exact Kylin header package revision, e.g. 5.4.18-53.42
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: kylin-arm64-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  kylin:
+    if: github.repository == 'loverto/mt7603u'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build against authenticated Kylin 5.4.18-53-generic ARM64 headers
+        env:
+          KYLIN_APT_SUITE: ${{ inputs.suite || '10.1' }}
+          KYLIN_PACKAGE_VERSION: ${{ inputs.package_version || '' }}
+          KYLIN_KEYRING_SHA256: ${{ vars.KYLIN_KEYRING_SHA256 }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e KYLIN_APT_SUITE -e KYLIN_PACKAGE_VERSION -e KYLIN_KEYRING_SHA256 \
+            -e SOURCE_COMMIT="$GITHUB_SHA" ubuntu:20.04 bash scripts/arm64/ci-kylin.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mt7603u-kylin-5.4.18-53-generic-arm64
+          path: dist/mt7603u-arm64-kylin-v10-5.4.18-53-generic.tar.gz*
+          if-no-files-found: error
+  upstream54:
+    if: github.repository == 'loverto/mt7603u'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Independent Linux 5.4 API compile regression (not Kylin)
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/src" -w /src \
+            -e HEADERS=linux-headers-generic \
+            -e 'HEADER_PATTERN=linux-headers-*-generic' \
+            -e KERNEL_PREFIX=5.4. -e BUILD_LABEL=ubuntu20-5.4-compat \
+            -e SOURCE_COMMIT="$GITHUB_SHA" ubuntu:20.04 bash scripts/arm64/ci-build.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: linux-5.4-api-compatibility-only
+          path: dist/mt7603u-arm64-ubuntu20-5.4-compat-*.tar.gz*
+          if-no-files-found: error
+  publish:
+    needs: kylin
+    if: github.repository == 'loverto/mt7603u' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: mt7603u-kylin-5.4.18-53-generic-arm64
+          path: dist
+      - name: Publish exact kernel build candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd dist
+          pkg=mt7603u-arm64-kylin-v10-5.4.18-53-generic.tar.gz
+          test -s "$pkg"
+          sha256sum -c "$pkg.sha256"
+          gh release create "kylin54-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$pkg" "$pkg.sha256" --target "$GITHUB_SHA" --prerelease \
+            --title "Kylin ARM64 5.4.18-53-generic build candidate" \
+            --notes "Compiled against authenticated Kylin ARM64 headers. Exact installed package revision, configuration, symbol CRCs, compiler and module signing policy must match the target; no physical-device testing. No vendor firmware redistributed. Source commit: $GITHUB_SHA."

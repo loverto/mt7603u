@@ -1,6 +1,7 @@
 /* MT7603U USB Probe & Disconnect */
 #include <linux/module.h>
 #include <linux/usb.h>
+#include <linux/slab.h>
 #include <linux/firmware.h>
 #include <linux/delay.h>
 #include <linux/completion.h>
@@ -217,6 +218,8 @@ static int mt7603_rsp_wait(struct usb_device *udev, struct mt7603_rsp_session *s
 
     dev_info(&udev->dev, "MT7603U: cmd rsp: status=%d actual=%d first=0x%02x\n",
              s->status, s->actual, s->actual > 0 ? s->buf[0] : 0);
+    /* Completion can wake this waiter before the callback has returned. */
+    usb_kill_urb(s->urb);
     usb_free_urb(s->urb);
     kfree(s->buf);
     s->urb = NULL;
@@ -374,7 +377,7 @@ static int mt7603_download_firmware(struct usb_device *udev, const struct firmwa
     size_t cmd_len;
     size_t offset = 0;
     int ret;
-    struct mt7603_rsp_session rsp;
+    struct mt7603_rsp_session rsp = {0};
 
     /* 0. Enable USB DMA bulk paths (vendor AndesMTUsbFwInit) */
     ret = mt7603_usb_enable_udma(udev, true);
@@ -389,17 +392,23 @@ static int mt7603_download_firmware(struct usb_device *udev, const struct firmwa
         return ret;
 
     if ((val & 0x02) == 0x02) {
-        u8 restart_cmd[MT7603_FW_SCATTER_MAX_PAYLOAD + 32];
+        u8 *restart_cmd;
         size_t restart_len = 0;
+
+        /* Keep the 4 KiB command buffer off the kernel stack. */
+        restart_cmd = kmalloc(MT7603_FW_SCATTER_MAX_PAYLOAD + 32, GFP_KERNEL);
+        if (!restart_cmd)
+            return -ENOMEM;
 
         dev_info(&udev->dev, "MT7603U: firmware already running (TOP_MISC2=0x%x), issuing CmdRestartDLReq\n", val);
         ret = mt7603_rust_build_restart_dl_req(mt7603_next_cmd_seq(&cmd_seq),
                                                restart_cmd,
-                                               sizeof(restart_cmd),
+                                               MT7603_FW_SCATTER_MAX_PAYLOAD + 32,
                                                &restart_len);
         if (ret == 0) {
             mt7603_restart_dl_rsp(udev, restart_cmd, restart_len);
         }
+        kfree(restart_cmd);
     }
 
     /* 2. Switch to bypass mode + force QID 8 for firmware download */
@@ -523,6 +532,13 @@ static int mt7603_download_firmware(struct usb_device *udev, const struct firmwa
     ret = 0;
 
 free_cmd:
+    /* A failed command send can leave a response URB pending. */
+    if (rsp.urb) {
+        usb_kill_urb(rsp.urb);
+        usb_free_urb(rsp.urb);
+        kfree(rsp.buf);
+        rsp.urb = NULL;
+    }
     kfree(cmd);
 restore:
     /* 8. Switch back to normal mode + pulse PSE reset bit */
@@ -544,7 +560,8 @@ static int mt7603u_probe(struct usb_interface *intf, const struct usb_device_id 
     struct usb_device *udev = interface_to_usbdev(intf);
     struct ieee80211_hw *hw = NULL;
     const struct firmware *fw = NULL;
-    struct reg_write_op ops[128];
+    const size_t ops_capacity = 128;
+    struct reg_write_op *ops;
     size_t count = 0;
     int ret;
 
@@ -576,14 +593,19 @@ static int mt7603u_probe(struct usb_interface *intf, const struct usb_device_id 
     }
 
     // Step 3: Call Rust to get MAC init sequence
-    ret = mt7603_rust_get_mac_init_sequence(ops, ARRAY_SIZE(ops), &count);
+    ops = kmalloc_array(ops_capacity, sizeof(*ops), GFP_KERNEL);
+    if (!ops)
+        return -ENOMEM;
+    ret = mt7603_rust_get_mac_init_sequence(ops, ops_capacity, &count);
     if (ret < 0) {
         dev_err(&intf->dev, "Failed to get MAC init sequence from Rust logic: %d\n", ret);
+        kfree(ops);
         return ret;
     }
 
     // Step 4: Execute register operations on USB hardware
     ret = mt7603_execute_reg_ops(udev, ops, count);
+    kfree(ops);
     if (ret < 0) {
         dev_warn(&intf->dev, "Hardware reg init notice (%d), proceeding with mac80211 registration...\n", ret);
     } else {

@@ -36,11 +36,23 @@ Generic openEuler 22.03 LTS SP4 (5.10) and Ubuntu 24.04 (6.8) modules are not un
 identical release strings do not guarantee matching ABI, config, symbol CRCs
 or signature policy. For a Kylin-specific build use its exact prepared ARM64
 kernel headers/build tree, including Module.symvers, and the matching compiler.
-On an ARM64 build host, install Rust 1.90.0 with
-aarch64-unknown-none-softfloat and run:
+For the 5.4.18-53-generic target, the separate Kylin ARM64 workflow obtains
+paired header packages from the vendor's signed APT index, using the vendor's
+HTTPS keyring package as the bootstrap trust anchor. For an independently
+verified keyring package, set the repository variable KYLIN_KEYRING_SHA256.
+It never uses trusted=yes or substitutes the Ubuntu headers. If the official
+archive is unavailable, the exact build fails and must not publish a Kylin
+candidate. The parallel Ubuntu 5.4 API regression artifact is not a Kylin driver.
 
-    KDIR=/path/to/exact/kernel/build bash scripts/arm64/build.sh
-    BUILD_LABEL=kylin SOURCE_COMMIT="$(git rev-parse HEAD)" bash scripts/arm64/package.sh
+For an authorized ARM64 build host with the exact vendor headers installed,
+install Rust 1.90.0 with aarch64-unknown-none-softfloat and the matching compiler:
+
+    KDIR=/path/to/exact/kernel/build bash scripts/arm64/build-kylin.sh
+
+The diagnostic output includes the header release and compiler information;
+BUILD_INFO records the symbol-version and configuration hashes. Match the
+installed kernel package revision as well as uname -r. Vendor header packages
+and internal diagnostic logs are never uploaded by this workflow.
 
 No automatic MOK enrollment, signature bypass, USB-policy modification or
 network configuration changes are performed. Physical hardware operation,

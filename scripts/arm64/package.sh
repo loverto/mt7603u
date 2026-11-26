@@ -25,6 +25,16 @@ sha256sum harness/fixtures/mt7603u_e2.bin | cut -d ' ' -f1 > "$p/FIRMWARE_SHA256
   printf 'source_commit=%s\n' "${SOURCE_COMMIT:-$(git rev-parse HEAD)}"
   printf 'kernel_release=%s\n' "$release"
   printf 'architecture=aarch64\n'
+  if [[ -n "${KDIR:-}" ]]; then
+    printf 'kernel_headers_package_version=%s\n' "${KERNEL_HEADERS_PACKAGE_VERSION:-unknown}"
+    printf 'kernel_module_symvers_sha256='
+    sha256sum "$KDIR/Module.symvers" | cut -d ' ' -f1
+    if [[ -f "$KDIR/include/config/auto.conf" ]]; then
+      printf 'kernel_auto_conf_sha256='
+      sha256sum "$KDIR/include/config/auto.conf" | cut -d ' ' -f1
+      grep '^CONFIG_CC_VERSION_TEXT=' "$KDIR/include/config/auto.conf" || true
+    fi
+  fi
   rustc --version
   gcc --version | sed -n '1p'
   ld --version | sed -n '1p'

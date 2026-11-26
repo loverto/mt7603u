@@ -442,11 +442,22 @@ static int mt7603_set_chandef(struct mt7603u_dev *dev, const struct cfg80211_cha
 static int mt7603_mac80211_start(struct ieee80211_hw *hw)
 {
     struct mt7603u_dev *dev = hw->priv;
-    struct reg_write_op ops[128];
+    const size_t ops_capacity = 128;
+    struct reg_write_op *ops;
     u8 *cmd_buf;
     size_t written = 0;
     int ret;
     u8 seq = dev->cmd_seq = (dev->cmd_seq % 15) + 1;
+
+    /* Allocate large temporary buffers before starting RX or changing state. */
+    ops = kmalloc_array(ops_capacity, sizeof(*ops), GFP_KERNEL);
+    if (!ops)
+        return -ENOMEM;
+    cmd_buf = kzalloc(MT7603_EEPROM_SIZE + 64, GFP_KERNEL);
+    if (!cmd_buf) {
+        kfree(ops);
+        return -ENOMEM;
+    }
 
     pr_info("mt7603u: mac80211 start requested\n");
     dev->running = true;
@@ -455,12 +466,13 @@ static int mt7603_mac80211_start(struct ieee80211_hw *hw)
      * Start RX ring (EP 0x84) and MCU cmd response ring (EP 0x85) FIRST so the
      * firmware can deliver event responses to EXT commands without stalling. */
     mt7603_usb_enable_udma(dev->udev, true);
-    mt7603_start_rx(dev);
-
-    cmd_buf = kzalloc(MT7603_EEPROM_SIZE + 64, GFP_KERNEL);
-    if (!cmd_buf) {
-        pr_err("mt7603u: failed to allocate cmd buffer\n");
-        return -ENOMEM;
+    ret = mt7603_start_rx(dev);
+    if (ret < 0) {
+        dev->running = false;
+        mt7603_stop_rx(dev);
+        kfree(cmd_buf);
+        kfree(ops);
+        return ret;
     }
 
     /* Push eFuse EEPROM calibration data to the firmware (EXT_CMD_EFUSE_BUFFER_MODE).
@@ -481,13 +493,13 @@ static int mt7603_mac80211_start(struct ieee80211_hw *hw)
         pr_warn("mt7603u: eFuse EEPROM not available, skipping calibration upload\n");
     }
 
-    ret = mt7603_rust_get_mac_init_sequence(ops, ARRAY_SIZE(ops), &written);
+    ret = mt7603_rust_get_mac_init_sequence(ops, ops_capacity, &written);
     if (ret == 0 && written > 0) {
         mt7603_execute_reg_ops(dev->udev, ops, written);
         pr_info("mt7603u: MAC init sequence applied (%zu ops)\n", written);
     }
 
-    ret = mt7603_rust_build_own_mac_sequence(dev->mac_addr, ops, ARRAY_SIZE(ops), &written);
+    ret = mt7603_rust_build_own_mac_sequence(dev->mac_addr, ops, ops_capacity, &written);
     if (ret == 0 && written > 0) {
         mt7603_execute_reg_ops(dev->udev, ops, written);
         pr_info("mt7603u: Own MAC sequence applied (%pM)\n", dev->mac_addr);
@@ -495,7 +507,7 @@ static int mt7603_mac80211_start(struct ieee80211_hw *hw)
 
     {
         static const u8 bcast_addr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-        ret = mt7603_rust_build_wtbl_sta_sequence(bcast_addr, ops, ARRAY_SIZE(ops), &written);
+        ret = mt7603_rust_build_wtbl_sta_sequence(bcast_addr, ops, ops_capacity, &written);
         if (ret == 0 && written > 0) {
             mt7603_execute_reg_ops(dev->udev, ops, written);
             pr_info("mt7603u: WTBL1 default sequence applied (%zu ops)\n", written);
@@ -528,6 +540,7 @@ static int mt7603_mac80211_start(struct ieee80211_hw *hw)
     mt7603_usb_write_reg(dev->udev, 0x00021c84, (1u << 8) | (1u << 16));
 
     kfree(cmd_buf);
+    kfree(ops);
     mt7603_set_channel(dev, 1);
     return 0;
 }
