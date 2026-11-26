@@ -1326,7 +1326,18 @@ static int mt7603_mac80211_ampdu_action(struct ieee80211_hw *hw, struct ieee8021
         }
         break;
     case IEEE80211_AMPDU_TX_START:
+        /* Some vendor 5.4 trees lack the newer immediate-start status.
+         * Use the actual header capability, not a guessed kernel version.
+         * On older mac80211, explicitly acknowledge the BA start. */
+#ifdef IEEE80211_AMPDU_TX_START_IMMEDIATE
         return IEEE80211_AMPDU_TX_START_IMMEDIATE;
+#else
+        if (!vif || !params->sta)
+            return -EINVAL;
+        ieee80211_start_tx_ba_cb_irqsafe(vif, params->sta->addr,
+                                        params->tid);
+        return 0;
+#endif
     case IEEE80211_AMPDU_TX_OPERATIONAL:
         if (mt7603_rust_build_ba_session_sequence(wcid, params->tid, params->buf_size ? params->buf_size : 64, true, dw15, ops, 4, &written) == 0 && written > 0)
             mt7603_execute_reg_ops(dev->udev, ops, written);
