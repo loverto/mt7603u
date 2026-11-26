@@ -5,7 +5,7 @@ test "$(uname -m)" = aarch64
 # package authentication. No frozen Debian archives or signature bypass.
 source /etc/os-release
 echo "Build distribution: $PRETTY_NAME ($ID)"
-case "$ID" in
+case "${ID,,}" in
   openeuler)
     header_root=/usr/src/kernels
     install_dependencies() {
@@ -43,7 +43,7 @@ for attempt in 1 2 3; do
 done
 [[ "$installed" = true ]] || { echo 'Failed to install authenticated build dependencies after 3 attempts' >&2; exit 1; }
 mapfile -t candidates < <(find "$header_root" -mindepth 1 -maxdepth 1 -type d -name "$HEADER_PATTERN" | sort -V)
-test "${#candidates[@]}" -gt 0
+[[ "${#candidates[@]}" -gt 0 ]] || { echo "No kernel development tree matching $HEADER_PATTERN in $header_root" >&2; exit 1; }
 kdir="${candidates[-1]}"
 # UTS_RELEASE is the exact version compiled into the installed headers.
 # Do not infer it from the runner kernel or a recomputed kernelrelease target.
