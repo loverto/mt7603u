@@ -1,6 +1,7 @@
 /* MT7603U Register I/O via USB Control Requests */
 #include <linux/module.h>
 #include <linux/usb.h>
+#include <linux/slab.h>
 #include <linux/delay.h>
 #include "mt7603u_rust.h"
 

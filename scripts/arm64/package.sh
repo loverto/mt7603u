@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "ARM64 packaging failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 release="$(modinfo -F vermagic ./mt7603u.ko | cut -d ' ' -f1)"
@@ -25,8 +26,8 @@ sha256sum harness/fixtures/mt7603u_e2.bin | cut -d ' ' -f1 > "$p/FIRMWARE_SHA256
   printf 'kernel_release=%s\n' "$release"
   printf 'architecture=aarch64\n'
   rustc --version
-  gcc --version | head -n 1
-  ld --version | head -n 1
+  gcc --version | sed -n '1p'
+  ld --version | sed -n '1p'
   modinfo ./mt7603u.ko
 } > "$p/BUILD_INFO"
 (cd "$p"; sha256sum mt7603u.ko KERNEL_RELEASE VERMAGIC FIRMWARE_SHA256 BUILD_INFO README.md check.sh install.sh uninstall.sh > SHA256SUMS)

@@ -45,12 +45,16 @@ done
 mapfile -t candidates < <(find "$header_root" -mindepth 1 -maxdepth 1 -type d -name "$HEADER_PATTERN" | sort -V)
 test "${#candidates[@]}" -gt 0
 kdir="${candidates[-1]}"
-release="$(make -s -C "$kdir" ARCH=arm64 kernelrelease)"
+# UTS_RELEASE is the exact version compiled into the installed headers.
+# Do not infer it from the runner kernel or a recomputed kernelrelease target.
+release="$(sed -n 's/^#define UTS_RELEASE "\(.*\)"$/\1/p' "$kdir/include/generated/utsrelease.h")"
+[[ -n "$release" ]] || { echo "Missing UTS_RELEASE in $kdir" >&2; exit 1; }
 case "$release" in "$KERNEL_PREFIX"*) ;; *) echo "Unexpected kernel: $release" >&2; exit 1;; esac
 test -s "$kdir/Module.symvers" || { echo "Missing Module.symvers in $kdir" >&2; exit 1; }
 echo "Kernel target: $release ($kdir)"
 gcc --version
 export KDIR="$kdir"
+export KERNEL_TARGET_RELEASE="$release"
 curl --retry 3 --retry-delay 2 --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh
 sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain 1.90.0
 export PATH="$HOME/.cargo/bin:$PATH"

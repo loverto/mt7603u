@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Separate ARM64 path; leave the upstream x86_64 relocation workaround untouched.
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "ARM64 build failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 test "$(uname -m)" = aarch64 || { echo 'Native ARM64 build environment required' >&2; exit 1; }
@@ -29,9 +30,20 @@ printf 'cmd_%s := true\nsavedcmd_%s := true\n' "$object" "$object" > "$root/src/
 make -C "$kdir" M="$root" ARCH=arm64 modules
 test -s mt7603u.ko
 readelf -h mt7603u.ko | grep -E 'Machine:.*AArch64'
-release="$(make -s -C "$kdir" ARCH=arm64 kernelrelease)"
+release="$(sed -n 's/^#define UTS_RELEASE "\(.*\)"$/\1/p' "$kdir/include/generated/utsrelease.h")"
+[[ -n "$release" ]] || { echo "Missing UTS_RELEASE in $kdir" >&2; exit 1; }
+if [[ -n "${KERNEL_TARGET_RELEASE:-}" && "$release" != "$KERNEL_TARGET_RELEASE" ]]; then
+  echo "Header release changed during build: expected $KERNEL_TARGET_RELEASE, got $release" >&2
+  exit 1
+fi
+echo "Target header release: $release"
+modinfo ./mt7603u.ko
 vermagic="$(modinfo -F vermagic ./mt7603u.ko)"
-test "${vermagic%% *}" = "$release"
-modinfo -F alias ./mt7603u.ko | grep -i 'v0E8Dp760C'
-modinfo -F alias ./mt7603u.ko | grep -i 'v0E8Dp7603'
+echo "Module vermagic: $vermagic"
+[[ "${vermagic%% *}" = "$release" ]] || { echo "Module vermagic does not match target kernel $release" >&2; exit 1; }
+aliases="$(modinfo -F alias ./mt7603u.ko)"
+printf 'USB aliases:\n%s\n' "$aliases"
+for id in 760c 7603; do
+  grep -Eiq "^usb:v0e8dp${id}d" <<< "$aliases" || { echo "Required USB alias missing: 0e8d:$id" >&2; exit 1; }
+done
 printf 'Built ARM64 module for %s (%s)\n' "$release" "$vermagic"
