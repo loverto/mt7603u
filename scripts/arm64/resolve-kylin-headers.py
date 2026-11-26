@@ -20,8 +20,10 @@ from functools import cmp_to_key
 from urllib.parse import quote
 
 ARCHIVE = "https://archive.kylinos.cn/kylin/KYLIN-ALL"
-SUITES = ("10.1", "10.1-2107-updates", "10.1-2203-updates", "10.0",
-          "10.1-2303-updates", "10.1-2209-updates")
+# The signed 2303 update index yielded the required ARM64 header pair in CI.
+# Try it first, but retain all official historical fallbacks.
+SUITES = ("10.1-2303-updates", "10.1", "10.1-2107-updates",
+          "10.1-2203-updates", "10.0", "10.1-2209-updates")
 COMMON = "linux-headers-5.4.18-53"
 FLAVOR = COMMON + "-generic"
 REVISION = re.compile(r"^5\.4\.18-53(?:\.[0-9]+[A-Za-z0-9.+~:-]*)?$")

@@ -36,7 +36,8 @@ sha256sum harness/fixtures/mt7603u_e2.bin | cut -d ' ' -f1 > "$p/FIRMWARE_SHA256
     fi
   fi
   rustc --version
-  gcc --version | sed -n '1p'
+  printf 'c_compiler=%s\n' "${CC:-gcc}"
+  "${CC:-gcc}" --version | sed -n '1p'
   ld --version | sed -n '1p'
   modinfo ./mt7603u.ko
 } > "$p/BUILD_INFO"

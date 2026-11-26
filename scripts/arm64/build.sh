@@ -27,7 +27,12 @@ for symbol in "${symbols[@]}"; do
 done
 # Kbuild 5.10 and newer use different saved-command variable names.
 printf 'cmd_%s := true\nsavedcmd_%s := true\n' "$object" "$object" > "$root/src/c/.rust_logic.o.cmd"
-make -C "$kdir" M="$root" ARCH=arm64 modules
+kbuild_args=()
+if [[ -n "${CC:-}" ]]; then
+  command -v "$CC" >/dev/null
+  kbuild_args+=("CC=$CC")
+fi
+make -C "$kdir" M="$root" ARCH=arm64 "${kbuild_args[@]}" modules
 test -s mt7603u.ko
 readelf -h mt7603u.ko | grep -E 'Machine:.*AArch64'
 release="$(sed -n 's/^#define UTS_RELEASE "\(.*\)"$/\1/p' "$kdir/include/generated/utsrelease.h")"

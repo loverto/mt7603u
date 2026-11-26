@@ -51,7 +51,12 @@ running the resolver locally. Use an approved vendor installation medium or
 an authorized Kylin installation for this public keyring. Neither unsigned
 packages nor Ubuntu headers are accepted for the Kylin build. If the official
 archive remains unavailable, exact acquisition fails and must not publish a
-Kylin candidate. The parallel Ubuntu 5.4 API regression artifact is not a Kylin driver.
+Kylin candidate. The signed 10.1-2303-updates index has provided both
+5.4.18-53.42 header packages in CI and is preferred in automatic discovery.
+Vendor .deb files are extracted into separate staging directories; only the
+two verified /usr/src header trees are installed into the disposable compiler
+container. Never extract those packages directly into the container root.
+The parallel Ubuntu 5.4 API regression artifact is not a Kylin driver.
 
 For an authorized ARM64 build host with the exact vendor headers installed,
 install Rust 1.90.0 with aarch64-unknown-none-softfloat and the matching compiler:
