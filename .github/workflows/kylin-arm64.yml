@@ -12,8 +12,8 @@ on:
       suite:
         description: Official Kylin APT suite
         type: choice
-        options: ['10.1', '10.0', '10.1-2107-updates', '10.1-2203-updates']
-        default: '10.1'
+        options: ['auto', '10.1', '10.0', '10.1-2107-updates', '10.1-2203-updates', '10.1-2303-updates', '10.1-2209-updates']
+        default: 'auto'
       package_version:
         description: Optional exact Kylin header package revision, e.g. 5.4.18-53.42
         required: false
@@ -34,15 +34,17 @@ jobs:
           persist-credentials: false
       - name: Build against authenticated Kylin 5.4.18-53-generic ARM64 headers
         env:
-          KYLIN_APT_SUITE: ${{ inputs.suite || '10.1' }}
+          KYLIN_APT_SUITE: ${{ inputs.suite || 'auto' }}
           KYLIN_PACKAGE_VERSION: ${{ inputs.package_version || '' }}
           KYLIN_KEYRING_SHA256: ${{ vars.KYLIN_KEYRING_SHA256 }}
+          KYLIN_PUBLIC_KEYRING_BASE64: ${{ vars.KYLIN_PUBLIC_KEYRING_BASE64 }}
         run: |
           set -euo pipefail
           test "$(uname -m)" = aarch64
           docker run --rm --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src" -w /src \
             -e KYLIN_APT_SUITE -e KYLIN_PACKAGE_VERSION -e KYLIN_KEYRING_SHA256 \
+            -e KYLIN_PUBLIC_KEYRING_BASE64 \
             -e SOURCE_COMMIT="$GITHUB_SHA" ubuntu:20.04 bash scripts/arm64/ci-kylin.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

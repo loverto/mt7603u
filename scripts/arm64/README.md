@@ -38,11 +38,20 @@ or signature policy. For a Kylin-specific build use its exact prepared ARM64
 kernel headers/build tree, including Module.symvers, and the matching compiler.
 For the 5.4.18-53-generic target, the separate Kylin ARM64 workflow obtains
 paired header packages from the vendor's signed APT index, using the vendor's
-HTTPS keyring package as the bootstrap trust anchor. For an independently
-verified keyring package, set the repository variable KYLIN_KEYRING_SHA256.
-It never uses trusted=yes or substitutes the Ubuntu headers. If the official
-archive is unavailable, the exact build fails and must not publish a Kylin
-candidate. The parallel Ubuntu 5.4 API regression artifact is not a Kylin driver.
+HTTPS keyring package as the bootstrap trust anchor. The package resolver reads
+package indexes directly, so directory listings are not required. It checks the
+signed Release, the SHA256 and size of each Packages index, and the SHA256,
+size, architecture and exact matched revision of each header .deb. The auto
+mode searches the official 10.1/10.0 and historical update suites. An explicitly
+requested package revision restricts all candidates. To independently pin the
+vendor keyring package, set KYLIN_KEYRING_SHA256. Alternatively a maintainer
+can provide the trusted **public** vendor keyring via KYLIN_PUBLIC_KEYRING_BASE64
+(repository variable, never a private key), or KYLIN_PUBLIC_KEYRING_FILE when
+running the resolver locally. Use an approved vendor installation medium or
+an authorized Kylin installation for this public keyring. Neither unsigned
+packages nor Ubuntu headers are accepted for the Kylin build. If the official
+archive remains unavailable, exact acquisition fails and must not publish a
+Kylin candidate. The parallel Ubuntu 5.4 API regression artifact is not a Kylin driver.
 
 For an authorized ARM64 build host with the exact vendor headers installed,
 install Rust 1.90.0 with aarch64-unknown-none-softfloat and the matching compiler:
