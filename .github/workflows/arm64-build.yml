@@ -24,8 +24,8 @@ jobs:
       matrix:
         include:
           - label: openeuler2203-5.10
-            image: openeuler/openeuler:22.03-lts-sp4
-            headers: kernel-devel
+            image: openeuler/openeuler:22.03-lts-sp4@sha256:55cd2516f822e6c6e6d58d8c6978379c01620e7ed206bafe04ecd2ddab52afd2
+            headers: kernel-devel-5.10.0-216.0.0.115.oe2203sp4.aarch64
             pattern: '5.10.*'
             prefix: '5.10.'
           - label: ubuntu24-6.8
@@ -59,7 +59,7 @@ jobs:
           path: dist/*.tar.gz*
           if-no-files-found: error
   publish:
-    if: github.repository == 'loverto/mt7603u' && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.repository == 'loverto/mt7603u' && github.ref == 'refs/heads/main' && (needs.build.result == 'success' || needs.build.result == 'failure') }}
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -74,13 +74,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
           set -euo pipefail
           cd dist
-          for checksum in *.tar.gz.sha256; do sha256sum -c "$checksum"; done
-          test "$(find . -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 2
+          shopt -s nullglob
+          archives=(*.tar.gz)
+          checksums=(*.tar.gz.sha256)
+          count=${#archives[@]}
+          [[ "$count" -ge 1 && "$count" -le 2 && "$count" -eq "${#checksums[@]}" ]] || { echo "No valid package/checksum pairs, or unexpected package count"; exit 1; }
+          for archive in "${archives[@]}"; do
+            test -s "$archive.sha256"
+            sha256sum -c "$archive.sha256"
+          done
+          state=partial
+          if [[ "$BUILD_RESULT" = success ]]; then
+            [[ "$count" -eq 2 ]] || { echo "Both builds succeeded but packages are missing"; exit 1; }
+            state=complete
+          fi
+          printf '%s\n' "Build matrix result: $BUILD_RESULT ($count/2 packages)." > release-notes.txt
+          printf '%s\n' "Only the following successfully compiled candidate packages are included:" >> release-notes.txt
+          printf -- '- %s\n' "${archives[@]}" >> release-notes.txt
+          printf '%s\n' "These are build-only candidates for their exact kernel releases; no Kylin or hardware validation. Vendor firmware is not redistributed; see README. Source commit: $GITHUB_SHA." >> release-notes.txt
           tag="arm64-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" *.tar.gz *.tar.gz.sha256 \
+          gh release create "$tag" "${archives[@]}" "${checksums[@]}" \
             --target "$GITHUB_SHA" --prerelease \
-            --title "ARM64 kernel-module candidates ($GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT)" \
-            --notes "Compile-tested only against the exact openEuler/Ubuntu kernel releases listed in each archive. Not validated on Kylin or physical hardware. Vendor firmware is not redistributed in these assets; see README. Kernel ABI and security policy must match. Source commit: $GITHUB_SHA."
+            --title "ARM64 kernel-module candidates ($state, $count/2; $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT)" \
+            --notes-file release-notes.txt

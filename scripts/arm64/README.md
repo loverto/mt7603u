@@ -20,10 +20,15 @@ Kylin-certified driver. Do not install it on restricted systems without approval
 
 ## CI environment
 
-The workflow uses native ARM64 GitHub-hosted Ubuntu runners, with maintained
-openEuler 22.03 LTS SP4 and Ubuntu 24.04 containers for their respective
-kernel development trees. The runner's own kernel release is not the target.
-Both builds are independent; a failure in one does not cancel the other.
+The workflow uses native ARM64 GitHub-hosted Ubuntu runners, with openEuler
+22.03 LTS SP4 and Ubuntu 24.04 containers for their respective kernel development
+trees. The openEuler build is pinned to the original SP4 kernel-devel RPM
+5.10.0-216.0.0.115.oe2203sp4.aarch64, using only signed release repositories
+OS and everything, not the moving update repository. This is a historical
+ABI build target, not a recommendation to deploy that OS or kernel.
+The runner's own kernel release is not the target. Both builds are independent.
+When one build fails, successfully checked artifacts may still be published as
+an explicitly partial prerelease; the workflow remains failed until both pass.
 
 ## Kylin-specific builds
 

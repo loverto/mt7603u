@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 test "$(uname -m)" = aarch64
-# Use currently maintained distribution repositories and their normal
-# package authentication. No frozen Debian archives or signature bypass.
+# Use authenticated distribution repositories. The openEuler SP4 baseline
+# is intentionally pinned for an ABI-specific build candidate, not a deployed OS.
 source /etc/os-release
 echo "Build distribution: $PRETTY_NAME ($ID)"
 case "${ID,,}" in
   openeuler)
     header_root=/usr/src/kernels
     install_dependencies() {
-      dnf --refresh --setopt=retries=2 --setopt=timeout=45 --setopt=gpgcheck=1 -y install \
+      # The OS and everything repositories contain the pinned release RPMs.
+      # Do not consult the moving update metadata, which failed checksum
+      # verification. Keep RPM signatures and all repository checks enabled.
+      dnf --refresh --disablerepo='*' --enablerepo=OS --enablerepo=everything \
+        --setopt=retries=2 --setopt=timeout=45 --setopt=gpgcheck=1 -y install \
         gcc gcc-c++ make binutils ca-certificates curl file kmod elfutils-libelf-devel \
         openssl-devel python3 bc tar gzip findutils git "$HEADERS"
     }
@@ -38,6 +42,7 @@ for attempt in 1 2 3; do
   echo "::endgroup::"
   if [[ "$attempt" -lt 3 ]]; then
     echo 'Dependency installation failed; refreshing repositories before retry.'
+    if [[ "${ID,,}" = openeuler ]]; then dnf clean metadata; fi
     sleep "$((attempt * 3))"
   fi
 done
