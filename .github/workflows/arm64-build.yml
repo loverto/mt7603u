@@ -23,10 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: debian11-5.10
-            image: debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9
-            headers: linux-headers-arm64
-            pattern: 'linux-headers-*-arm64'
+          - label: openeuler2203-5.10
+            image: openeuler/openeuler:22.03-lts-sp4
+            headers: kernel-devel
+            pattern: '5.10.*'
             prefix: '5.10.'
           - label: ubuntu24-6.8
             image: ubuntu:24.04
@@ -83,4 +83,4 @@ jobs:
           gh release create "$tag" *.tar.gz *.tar.gz.sha256 \
             --target "$GITHUB_SHA" --prerelease \
             --title "ARM64 kernel-module candidates ($GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT)" \
-            --notes "Compile-tested only against the exact Debian/Ubuntu kernel releases listed in each archive. Not validated on Kylin or physical hardware. Vendor firmware is not redistributed in these assets; see README. Kernel ABI and security policy must match. Source commit: $GITHUB_SHA."
+            --notes "Compile-tested only against the exact openEuler/Ubuntu kernel releases listed in each archive. Not validated on Kylin or physical hardware. Vendor firmware is not redistributed in these assets; see README. Kernel ABI and security policy must match. Source commit: $GITHUB_SHA."

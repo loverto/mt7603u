@@ -18,9 +18,16 @@ Kylin-certified driver. Do not install it on restricted systems without approval
 5. If approved, load via `sudo modprobe mt7603u`; check `iw dev` and system logs.
 6. Remove with `sudo bash uninstall.sh`; shared firmware is retained.
 
+## CI environment
+
+The workflow uses native ARM64 GitHub-hosted Ubuntu runners, with maintained
+openEuler 22.03 LTS SP4 and Ubuntu 24.04 containers for their respective
+kernel development trees. The runner's own kernel release is not the target.
+Both builds are independent; a failure in one does not cancel the other.
+
 ## Kylin-specific builds
 
-Generic Debian/Ubuntu 5.10/6.8 modules are not universal ARM64 modules. Even
+Generic openEuler 22.03 LTS SP4 (5.10) and Ubuntu 24.04 (6.8) modules are not universal ARM64 modules. Even
 identical release strings do not guarantee matching ABI, config, symbol CRCs
 or signature policy. For a Kylin-specific build use its exact prepared ARM64
 kernel headers/build tree, including Module.symvers, and the matching compiler.
