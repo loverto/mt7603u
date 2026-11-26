@@ -20,11 +20,11 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - label: debian11-5.10
-            image: debian:bullseye
+            image: debian:bullseye@sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9
             headers: linux-headers-arm64
             pattern: 'linux-headers-*-arm64'
             prefix: '5.10.'
